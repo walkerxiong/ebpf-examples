@@ -5,9 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
-	"unsafe"
 
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
@@ -23,11 +21,9 @@ func init() {
 	flag.StringVar(&blacklist, "ip blacklist", "127.0.0.1", "ip blacklist, split by comma")
 }
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang firewallXDP ./ebpf/fw_xdp.c -- -I ./libbpf/src
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang FirewallXDP ./ebpf/fw_xdp.c -- -I ./libbpf/src
 func main() {
 	flag.Parse()
-	stoper := make(chan os.Signal, 1)
-	signal.Notify(stoper, os.Interrupt, syscall.SIGTERM)
 
 	if err := unix.Setrlimit(unix.RLIMIT_MEMLOCK, &unix.Rlimit{
 		Cur: unix.RLIM_INFINITY,
@@ -36,16 +32,11 @@ func main() {
 		log.Fatalf("failed to set terpory memory: %v", err)
 	}
 
-	objs := firewallXDPObjects{}
-	if err := loadFirewallXDPObjects(objs, nil); err != nil {
+	objs := FirewallXDPObjects{}
+	if err := LoadFirewallXDPObjects(&objs, nil); err != nil {
 		log.Fatalf("loading object : %v ", err)
 	}
 	defer objs.Close()
-
-	blackl := strings.Split(blacklist, ",")
-	for k := range blackl {
-		objs.firewallXDPMaps.Blacklist.Put(unsafe.Pointer(&blackl[k]), uint32(k))
-	}
 
 	link, err := netlink.LinkByName(iface)
 	if err != nil {
@@ -58,6 +49,8 @@ func main() {
 	log.Println("XDP program successfully loaded and attached.")
 	log.Println("Press CTRL+C to stop.")
 
+	stoper := make(chan os.Signal, 1)
+	signal.Notify(stoper, os.Interrupt, syscall.SIGTERM)
 	<-stoper
 	if err := netlink.LinkSetXdpFd(link, -1); err != nil {
 		log.Fatalf("detached network failed : %v", err)

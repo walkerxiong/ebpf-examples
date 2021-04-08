@@ -6,8 +6,6 @@
 #include "bpf_helpers.h"
 #include "bpf_endian.h"
 
-typedef struct in_addr ipv4_addr_t;
-
 
 struct bpf_map_def SEC("maps") matches = {
     .type = BPF_MAP_TYPE_PERCPU_ARRAY,
@@ -16,11 +14,12 @@ struct bpf_map_def SEC("maps") matches = {
     .max_entries = 16,
 };
 
-struct bpf_map_def SEC("maps") blacklist = {
+struct bpf_map_def SEC("maps") blacklist_map = {
     .type = BPF_MAP_TYPE_LPM_TRIE,
-    .key_size = sizeof(__u64),
+    .key_size = sizeof(struct bpf_lpm_trie_key) + sizeof(__u32),
     .value_size = sizeof(__u32),
     .max_entries = 16,
+    .map_flags = BPF_F_NO_PREALLOC,
 } ;
 
 SEC("xdp")
@@ -35,7 +34,7 @@ int firewall(struct xdp_md *ctx)
     }
 
     // only ipv4 supported  
-    if (eth->h_proto != __bpf_constant_htons(ETH_P_IP)){
+    if (eth->h_proto != htons(ETH_P_IP)){
         return XDP_PASS;
     }
 
@@ -52,7 +51,7 @@ int firewall(struct xdp_md *ctx)
     key.prefixlen = 32;
     key.saddr = ip->saddr;
 
-    __u64 *rule_idx = bpf_map_lookup_elem(&blacklist,&key); 
+    __u64 *rule_idx = bpf_map_lookup_elem(&blacklist_map,&key); 
     if(rule_idx){
         __u32 index = *(__u32*)rule_idx;
         __u64 *counter = bpf_map_lookup_elem(&matches,&index);
