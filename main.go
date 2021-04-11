@@ -22,7 +22,7 @@ var (
 
 func init() {
 	flag.StringVar(&iface, "iface", "ens33", "network interface to attach")
-	flag.StringVar(&blacklist, "ip drops", "192.168.187.160/24", "ip blacklist, split by comma")
+	flag.StringVar(&blacklist, "ip drops", "192.168.187.157/32", "ip blacklist, split by comma")
 }
 
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang FirewallXDP ./ebpf/fw_xdp.c -- -I ./libbpf/src
@@ -44,8 +44,8 @@ func main() {
 	defer objs.Close()
 
 	// write blacklist to map
-	dropIP := strings.Split(blacklist, ",")
-	for index, ip := range dropIP {
+	dropIPs := strings.Split(blacklist, ",")
+	for index, ip := range dropIPs {
 		if !strings.Contains(ip, "/") {
 			ip += "/32"
 		}
@@ -61,6 +61,9 @@ func main() {
 		if err := objs.BlacklistMap.Put(res, uint32(index)); err != nil {
 			log.Fatalf("blacklist put err %v \n", err)
 		}
+		if err := objs.Matches.Put(uint32(index), []uint64{0, 0, 0, 0, 0, 0, 0, 0}); err != nil {
+			log.Fatalf("matches put err %v", err)
+		}
 	}
 
 	link, err := netlink.LinkByName(iface)
@@ -75,11 +78,8 @@ func main() {
 	log.Println("Press CTRL+C to stop.")
 
 	var (
-		stoper  = make(chan os.Signal, 1)
-		ticket  = time.NewTicker(time.Second)
-		entries = objs.BlacklistMap.Iterate()
-		key     *net.IPNet
-		value   uint32
+		stoper = make(chan os.Signal, 1)
+		ticket = time.NewTicker(time.Second)
 	)
 	signal.Notify(stoper, os.Interrupt, syscall.SIGTERM)
 
@@ -93,15 +93,15 @@ func main() {
 			return
 
 		case <-ticket.C:
-			for entries.Next(&key, &value) {
-				log.Printf("IP: %18s \n", key)
-				var counter uint64
-				if err := objs.Matches.Lookup(&value, &counter); err == nil {
-					log.Printf("IP: %18s DROP: %d \n", key, counter)
+			for index, value := range dropIPs {
+				var counter []uint64
+				if err := objs.Matches.Lookup(uint32(index), &counter); err == nil {
+					var sum uint64
+					for _, n := range counter {
+						sum += n
+					}
+					log.Printf("IP: %s DROP: %d \n", value, sum)
 				}
-			}
-			if err := entries.Err(); err != nil {
-				log.Fatalf("entries error %v", err)
 			}
 		}
 	}
