@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -61,7 +62,8 @@ func main() {
 		if err := objs.BlacklistMap.Put(res, uint32(index)); err != nil {
 			log.Fatalf("blacklist put err %v \n", err)
 		}
-		if err := objs.Matches.Put(uint32(index), []uint64{0, 0, 0, 0, 0, 0, 0, 0}); err != nil {
+		matcheVal := make([]uint64, runtime.NumCPU())
+		if err := objs.Matches.Put(uint32(index), matcheVal); err != nil {
 			log.Fatalf("matches put err %v", err)
 		}
 	}
