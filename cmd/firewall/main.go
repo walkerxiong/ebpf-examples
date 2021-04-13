@@ -26,7 +26,7 @@ func init() {
 	flag.StringVar(&blacklist, "ip drops", "192.168.187.157/32", "ip blacklist, split by comma")
 }
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang FirewallXDP ./ebpf/fw_xdp.c -- -I ./libbpf/src
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang FirewallXDP ../../ebpf/fw_xdp.c -- -I ../../libbpf/src
 func main() {
 	flag.Parse()
 
