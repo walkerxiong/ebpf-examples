@@ -74,12 +74,16 @@ func main() {
 		}
 	}()
 	// load the network interface map
+	var (
+		ifaceList []netlink.Link
+	)
 	for _, value := range strings.Split(iface, ",") {
 		link, err := netlink.LinkByName(value)
 		if err != nil {
 			log.Println("network not found ", err)
 			continue
 		}
+		ifaceList = append(ifaceList, link)
 		ifindex := uint32(link.Attrs().Index)
 		objs.RedirectXDPMaps.IfDerect.Put(ifindex, ifindex)
 		if err := netlink.LinkSetXdpFd(link, objs.RedirectXDPPrograms.Redirect.FD()); err != nil {
@@ -93,6 +97,9 @@ func main() {
 	select {
 	case <-signals:
 	case <-closeChan:
+	}
+	for _, link := range ifaceList {
+		netlink.LinkSetXdpFd(link, -1)
 	}
 	log.Println("ended")
 

@@ -41,23 +41,24 @@ int redirect(struct xdp_md *ctx){
         return XDP_DROP;
     }
 
-    // icmp package
     if (eth->h_proto != htons(ETH_P_IP)){
-        bpf_printk("invalid ip \n");
         return XDP_PASS;
     }
+
     data += sizeof(*eth);
     if (data + sizeof(*ip) > data_end){
         bpf_printk("malformed ip data \n");
         return XDP_DROP;
     }
-
+    
     if(ip->protocol != htons(IPPROTO_ICMP)){
-        bpf_printk("invalid icmp \n");
         return XDP_PASS;
     }
 
-    pitem = bpf_map_lookup_elem(&rtcache_map,&ip->daddr);
+
+    bpf_printk("route lookup dst %d \n",ip->saddr);
+
+    pitem = bpf_map_lookup_elem(&rtcache_map,&ip->saddr);
 
     if(pitem){
         memcpy(eth->h_dest,pitem->eth_dst,ETH_ALEN);
@@ -69,13 +70,12 @@ int redirect(struct xdp_md *ctx){
     struct bpf_fib_lookup fib_param;
     // fill with zeroes
     memset(&fib_param,0,sizeof(fib_param));
-    
+    // look up the router  
     fib_param.family = AF_NET;
     fib_param.ipv4_dst = ip->saddr;
     fib_param.ipv4_src = ip->daddr;
     fib_param.ifindex = ctx->ingress_ifindex;
 
-    bpf_printk("route lookup dst %d \n",fib_param.ipv4_dst);
 
     int rc = bpf_fib_lookup(ctx,&fib_param,sizeof(fib_param),0);
 
@@ -97,11 +97,10 @@ int redirect(struct xdp_md *ctx){
     memcpy(&nitem.eth_dst,fib_param.dmac,ETH_ALEN);
     memcpy(&nitem.eth_src,fib_param.smac,ETH_ALEN);
     nitem.ifindex = fib_param.ifindex;
-    bpf_map_update_elem(&rtcache_map,&fib_param.ifindex,&nitem,BPF_ANY);
+    bpf_map_update_elem(&rtcache_map,&ip->saddr,&nitem,BPF_ANY);
     __u32 oldipdst = ip->daddr;
     ip->daddr = ip->saddr;
-    ip->saddr = oldipdst;    
-
+    ip->saddr = oldipdst;
     memcpy(eth->h_dest,fib_param.dmac,ETH_ALEN);
     memcpy(eth->h_source,fib_param.smac,ETH_ALEN);
     bpf_trace_printk("slow path %d",fib_param.ifindex);
