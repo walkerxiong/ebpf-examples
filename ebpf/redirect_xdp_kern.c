@@ -5,7 +5,6 @@
 #include "memory.h"
 #include "bpf_helpers.h"
 
-#define AF_NET  4
 
 struct rt_item {
     int ifindex;
@@ -33,7 +32,6 @@ int redirect(struct xdp_md *ctx){
     void *data_end = (void*)(long)ctx->data_end;
     void *data = (void*)(long)ctx->data;
     struct ethhdr *eth = data;
-    struct iphdr *ip = data;
     struct  rt_item *pitem = NULL;
 
     if (data + sizeof(*eth) > data_end){
@@ -46,16 +44,15 @@ int redirect(struct xdp_md *ctx){
     }
 
     data += sizeof(*eth);
+    struct iphdr *ip = data;
     if (data + sizeof(*ip) > data_end){
         bpf_printk("malformed ip data \n");
         return XDP_DROP;
     }
     
-    if(ip->protocol != htons(IPPROTO_ICMP)){
+    if(ip->protocol != IPPROTO_ICMP){
         return XDP_PASS;
     }
-
-
     bpf_printk("route lookup dst %d \n",ip->saddr);
 
     pitem = bpf_map_lookup_elem(&rtcache_map,&ip->saddr);
@@ -63,7 +60,7 @@ int redirect(struct xdp_md *ctx){
     if(pitem){
         memcpy(eth->h_dest,pitem->eth_dst,ETH_ALEN);
         memcpy(eth->h_source,pitem->eth_src,ETH_ALEN);
-        bpf_trace_printk("fast path %d \n",pitem->ifindex);
+        bpf_printk("fast path %d \n",pitem->ifindex);
         return bpf_redirect_map(&if_derect,pitem->ifindex,0);
     }
 
@@ -71,7 +68,7 @@ int redirect(struct xdp_md *ctx){
     // fill with zeroes
     memset(&fib_param,0,sizeof(fib_param));
     // look up the router  
-    fib_param.family = AF_NET;
+    fib_param.family = AF_INET;
     fib_param.ipv4_dst = ip->saddr;
     fib_param.ipv4_src = ip->daddr;
     fib_param.ifindex = ctx->ingress_ifindex;
@@ -88,7 +85,7 @@ int redirect(struct xdp_md *ctx){
         bpf_printk("Passing packet, lookup returned %d\n", BPF_FIB_LKUP_RET_NO_NEIGH);
         return XDP_PASS;
     default:
-        bpf_printk("Dropping packet\n");
+        bpf_printk("Dropping packet, %d \n",rc);
         return XDP_DROP;
     }
     // cached route
@@ -103,7 +100,7 @@ int redirect(struct xdp_md *ctx){
     ip->saddr = oldipdst;
     memcpy(eth->h_dest,fib_param.dmac,ETH_ALEN);
     memcpy(eth->h_source,fib_param.smac,ETH_ALEN);
-    bpf_trace_printk("slow path %d",fib_param.ifindex);
+    bpf_printk("slow path %d",fib_param.ifindex);
     return bpf_redirect_map(&if_derect,fib_param.ifindex,0);
 }
 
