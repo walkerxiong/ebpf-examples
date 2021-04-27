@@ -23,7 +23,7 @@ var (
 
 func init() {
 	flag.StringVar(&iface, "iface", "ens33", "network interface to attach")
-	flag.StringVar(&blacklist, "ip drops", "192.168.187.157/32", "ip blacklist, split by comma")
+	flag.StringVar(&blacklist, "drop", "192.168.187.157/32", "ip blacklist, split by comma")
 }
 
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang FirewallXDP ../../ebpf/fw_xdp.c -- -I ../../libbpf/src
@@ -56,6 +56,7 @@ func main() {
 			continue
 		}
 		var res = make([]byte, objs.BlacklistMap.KeySize())
+		// key struct {uint32 , uint32}
 		ones, _ := ipnet.Mask.Size()
 		binary.LittleEndian.PutUint32(res, uint32(ones))
 		copy(res[4:], ipnet.IP)

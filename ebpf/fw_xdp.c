@@ -15,10 +15,15 @@ struct bpf_map_def SEC("maps") matches = {
     .max_entries = 16,
 };
 
+struct blacklist_key {
+    __u32 prefixlen;
+    __u32 data;
+};
+
 // https://github.com/torvalds/linux/blob/master/kernel/bpf/lpm_trie.c
 struct bpf_map_def SEC("maps") blacklist_map = {
     .type = BPF_MAP_TYPE_LPM_TRIE,
-    .key_size = sizeof(struct bpf_lpm_trie_key ) + sizeof(__u32),
+    .key_size = sizeof(struct blacklist_key),
     .value_size = sizeof(__u32),
     .max_entries = 16,
     .map_flags = BPF_F_NO_PREALLOC,
@@ -46,10 +51,7 @@ int firewall(struct xdp_md *ctx)
         return XDP_ABORTED;
     }
     
-    struct {
-       __u32 prefixlen;
-       __u32 data ;
-    } key;
+    struct blacklist_key key;
     key.prefixlen = 32;
     key.data = ip->saddr;
 
