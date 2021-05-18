@@ -18,16 +18,16 @@ var (
 
 func New() *cobra.Command {
 	var blackCmd = &cobra.Command{
-		Use:   "intercept",
-		Short: "intercept the traffic from specific source ip ",
-		Args:  cobra.ExactArgs(2),
+		Use:   "intercept [path to object]",
+		Short: "intercept the traffic from specific source ip",
+		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			kernObjFile = args[0]
 			run()
 		},
 	}
 
-	blackCmd.PersistentFlags().StringSliceVarP(&sourceIPs, "source", "sip", nil, "Source ip for intercept")
+	blackCmd.PersistentFlags().StringSliceVarP(&sourceIPs, "sip", "s", nil, "Source ip for intercept")
 	return blackCmd
 }
 
